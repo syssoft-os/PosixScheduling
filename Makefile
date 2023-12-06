@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-I.
+CFLAGS=-g -I.
 DEPS = 
 OBJ = lets_schedule.o 
 %.o: %.c $(DEPS)

@@ -5,7 +5,7 @@
         "type": "cppdbg",
         "request": "launch",
         "program": "${workspaceFolder}/lets_schedule",
-        "args": [],
+        "args": ["RR/10/100cpu/300io","FIFO/12/200cpu/400io"],
         "stopAtEntry": false,
         "cwd": "${fileDirname}",
         "environment": [],
