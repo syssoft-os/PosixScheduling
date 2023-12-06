@@ -1,0 +1,18 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run lets_schedule",
+            "type": "request",
+            "request": "launch",
+            "request": "launch",
+            "program": "${workspaceFolder}/lets_synchronize",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "preLaunchTask": "build lets_synchronize"
+        }
+    ]
+}
