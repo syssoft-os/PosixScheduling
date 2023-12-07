@@ -6,7 +6,7 @@ OBJ = lets_schedule.o
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 lets_schedule: $(OBJ)
-	$(CC) -o $@ $^ $(CFLAGS)
+	$(CC) -o $@ $^ $(CFLAGS) -lm
 
 default: lets_schedule
 
