@@ -178,7 +178,32 @@ void print_burst_stats(ThreadConfig *config) {
     cpu_std_dev *= 1000;
     io_mean *= 1000;
     io_std_dev *= 1000;
-    printf("%25s | %5d | %13.3f - %13.3f | %13.3f - %13.3f\n",config->raw, count, cpu_mean, cpu_std_dev, io_mean, io_std_dev);
+    printf("%25s | %5d | %13.3lf - %13.3lf | %13.3lf - %13.3lf\n",config->raw, count, cpu_mean, cpu_std_dev, io_mean, io_std_dev);
+}
+
+void print_raw_stats(ThreadConfig **threads, int n_threads, FILE *file) {
+    BurstData **current_data = malloc(sizeof(BurstData *) * n_threads);
+    for (int i = 0; i < n_threads; i++) {
+        current_data[i] = threads[i]->burst_data;
+        fprintf(file,"%s-%d-%dcpu,%dio,", threads[i]->algorithm, threads[i]->priority, threads[i]->cpu, threads[i]->io);
+    }
+    fprintf(file, "loop\n");
+    int done;
+    int line = 1;
+    do {
+        done = 1;
+        for (int i = 0; i < n_threads; i++) {
+            if (current_data[i] != NULL) {
+                fprintf(file, "%lf,%lf,", current_data[i]->cpu_burst_length, current_data[i]->io_burst_length);
+                current_data[i] = current_data[i]->next;
+                done = 0;
+            } else {
+                fprintf(file, ",,");
+            }
+        }
+        fprintf(file, "%d\n",line++);
+    } while (!done);
+    free(current_data);
 }
 
 int main (int ac, char **av) {
@@ -218,6 +243,17 @@ int main (int ac, char **av) {
     printf("                   Thread | Count | CPU-diff mean -       std dev |  IO-diff mean -       std dev\n");
     for (int i = 0; i < n_threads; i++) {
         print_burst_stats(threads[i]);
+    }
+    pid_t pid = getpid();
+    char filename[256];
+    sprintf(filename, "raw_data_%d.csv", pid);
+
+    FILE *file = fopen(filename, "w");
+    if (file != NULL) {
+        print_raw_stats(threads, n_threads, file);
+        fclose(file);
+    } else {
+        printf("Failed to open file <%s> for writing the raw data\n", filename);
     }
     return 0;
 }
