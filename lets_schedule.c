@@ -39,11 +39,19 @@ int calibrate_cpu_burst() {
     return (low + high) / 2;
 }
 
+typedef struct BurstData BurstData;
+
 typedef struct {
+    char *raw;
     char *algorithm;
     int priority;
     int cpu;
     int io;
+    pthread_t thread;
+    int calibrate_1ms;
+    int simulation_seconds;
+    BurstData *burst_data;
+
 } ThreadConfig;
 
 ThreadConfig* extract_ThreadConfig(char *input) {
@@ -59,6 +67,7 @@ ThreadConfig* extract_ThreadConfig(char *input) {
         regex_compiled = true;
     }
     ThreadConfig *result = malloc(sizeof(ThreadConfig));
+    result->raw = strdup(input);
     if (regexec(&regex, input, 5, matches, 0) == 0) {
         // Extract the matches
         for (int i = 1; i < 5; i++) {
@@ -81,23 +90,14 @@ ThreadConfig* extract_ThreadConfig(char *input) {
     return result;
 }
 
-typedef struct BurstData BurstData;
 struct BurstData {
     double cpu_burst_length;
     double io_burst_length;
     BurstData *next;
 };
 
-typedef struct {
-    ThreadConfig *config;
-    int calibrate_1ms;
-    int simulation_seconds;
-    BurstData *burst_data;
-} ThreadArgs;
-
 void* thread_func(void *arg) {
-    ThreadArgs *args = (ThreadArgs*) arg;
-    ThreadConfig *config = args->config;
+    ThreadConfig *args = (ThreadConfig*) arg;
     int calibrate_1ms = args->calibrate_1ms;
     int simulation_seconds = args->simulation_seconds;
     args->burst_data = NULL;
@@ -105,18 +105,19 @@ void* thread_func(void *arg) {
     while (1) {
         BurstData *data = malloc(sizeof(BurstData));
         time_t burst_start, burst_end;
-        if (config->cpu > 0) {
-            burst_start = time(NULL);
-            cpu_burst(config->cpu * calibrate_1ms);
-            burst_end = time(NULL);
-            data->cpu_burst_length = difftime(burst_end, burst_start);
+        burst_start = time(NULL);
+        if (args->cpu > 0) {
+            cpu_burst(args->cpu * calibrate_1ms);
         }
-        if (config->io > 0) {
-            burst_start = time(NULL);
-            usleep(config->io * 1000); // usleep takes microseconds
-            burst_end = time(NULL);
-            data->io_burst_length = difftime(burst_end, burst_start);
+        burst_end = time(NULL);
+        data->cpu_burst_length = difftime(burst_end, burst_start);
+        burst_start = time(NULL);
+        if (args->io > 0) {
+            usleep(args->io * 1000); // usleep takes microseconds
         }
+        burst_end = time(NULL);
+        data->io_burst_length = difftime(burst_end, burst_start);
+        printf("%f %f\n", data->cpu_burst_length, data->io_burst_length);
         data->next = args->burst_data;
         args->burst_data = data;
 
@@ -131,19 +132,13 @@ void* thread_func(void *arg) {
     return NULL;
 }
 
-pthread_t create_thread(int simulation_seconds, ThreadConfig *config, int calibrate_1ms) {
-    pthread_t thread_id;
-    ThreadArgs *args = malloc(sizeof(ThreadArgs));
-    args->config = config;
-    args->calibrate_1ms = calibrate_1ms;
-    args->simulation_seconds = simulation_seconds;
-
-    pthread_create(&thread_id, NULL, thread_func, args);
+void create_thread(ThreadConfig *config ) {
+    pthread_create(&config->thread, NULL, thread_func, config);
     // Set scheduling policy and priority
     struct sched_param param;
     param.sched_priority = config->priority;
     int policy = (strcmp(config->algorithm, "RR") == 0) ? SCHED_RR : SCHED_FIFO;
-    int ret = pthread_setschedparam(thread_id, policy, &param);
+    int ret = pthread_setschedparam(config->thread, policy, &param);
     if (ret == EPERM) {
         fprintf(stderr, "Failed to set thread scheduling policy and priority. Are you root?\n");
         fflush(stderr);
@@ -153,8 +148,34 @@ pthread_t create_thread(int simulation_seconds, ThreadConfig *config, int calibr
         fflush(stderr);
         exit(-1);
     }
+}
 
-    return thread_id;
+void print_burst_stats(ThreadConfig *config) {
+    // Calculate mean and standard deviation
+    BurstData *data = config->burst_data;
+    double cpu_sum = 0, io_sum = 0;
+    int count = 0;
+    while (data != NULL) {
+        cpu_sum += data->cpu_burst_length;
+        io_sum += data->io_burst_length;
+        count++;
+        data = data->next;
+    }
+    double cpu_mean = cpu_sum / count;
+    double io_mean = io_sum / count;
+
+    double cpu_sq_diff_sum = 0, io_sq_diff_sum = 0;
+    data = config->burst_data;
+    while (data != NULL) {
+        cpu_sq_diff_sum += pow(data->cpu_burst_length - cpu_mean, 2);
+        io_sq_diff_sum += pow(data->io_burst_length - io_mean, 2);
+        data = data->next;
+    }
+    double cpu_std_dev = sqrt(cpu_sq_diff_sum / count);
+    double io_std_dev = sqrt(io_sq_diff_sum / count);
+
+    printf("Thread %s: count = %d, CPU mean = %f, CPU std dev = %f, IO mean = %f, IO std dev = %f\n",
+           config->raw, count, cpu_mean, cpu_std_dev, io_mean, io_std_dev);
 }
 
 int main (int ac, char **av) {
@@ -169,15 +190,15 @@ int main (int ac, char **av) {
     printf("Calibrating CPU burst of 1ms: %d\n", calibrate_1ms);
     int n_threads = ac - 2;
     printf("Number of threads: %d\n", n_threads);
-    pthread_t *threads = malloc(sizeof(pthread_t) * n_threads);
+    ThreadConfig **threads = malloc(sizeof(ThreadConfig *) * n_threads);
     for (int i = 2; i < ac; i++) {
         ThreadConfig *e = extract_ThreadConfig(av[i]);
+        e->calibrate_1ms = calibrate_1ms;
+        e->simulation_seconds = simulation_seconds;
         if (e != NULL) {
             printf("Algorithm: %s, Priority: %d, CPU: %d, IO: %d\n", e->algorithm, e->priority, e->cpu, e->io);
-            pthread_t thread_id = create_thread(simulation_seconds, e, calibrate_1ms);
-            threads[i - 2] = thread_id;
-            free(e->algorithm); // Free the allocated memory for string
-            free(e); // Free the allocated memory for struct
+            create_thread(e);
+            threads[i - 2] = e;
         }
         else {
             printf("Invalid thread config: %s\n", av[i]);
@@ -187,7 +208,10 @@ int main (int ac, char **av) {
         }
     }
     for (int i = 0; i < n_threads; i++) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i]->thread, NULL);
+    }
+    for (int i = 0; i < n_threads; i++) {
+        print_burst_stats(threads[i]);
     }
     return 0;
 }
