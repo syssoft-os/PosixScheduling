@@ -81,10 +81,18 @@ ThreadConfig* extract_ThreadConfig(char *input) {
     return result;
 }
 
+typedef struct BurstData BurstData;
+struct BurstData {
+    double cpu_burst_length;
+    double io_burst_length;
+    BurstData *next;
+};
+
 typedef struct {
     ThreadConfig *config;
     int calibrate_1ms;
     int simulation_seconds;
+    BurstData *burst_data;
 } ThreadArgs;
 
 void* thread_func(void *arg) {
@@ -92,12 +100,26 @@ void* thread_func(void *arg) {
     ThreadConfig *config = args->config;
     int calibrate_1ms = args->calibrate_1ms;
     int simulation_seconds = args->simulation_seconds;
+    args->burst_data = NULL;
     time_t start_time = time(NULL);
     while (1) {
-        if (config->cpu > 0)
+        BurstData *data = malloc(sizeof(BurstData));
+        time_t burst_start, burst_end;
+        if (config->cpu > 0) {
+            burst_start = time(NULL);
             cpu_burst(config->cpu * calibrate_1ms);
-        if (config->io > 0)
+            burst_end = time(NULL);
+            data->cpu_burst_length = difftime(burst_end, burst_start);
+        }
+        if (config->io > 0) {
+            burst_start = time(NULL);
             usleep(config->io * 1000); // usleep takes microseconds
+            burst_end = time(NULL);
+            data->io_burst_length = difftime(burst_end, burst_start);
+        }
+        data->next = args->burst_data;
+        args->burst_data = data;
+
         time_t current_time = time(NULL);
         double elapsed_time = difftime(current_time, start_time);
 
