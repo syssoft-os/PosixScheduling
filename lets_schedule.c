@@ -182,28 +182,22 @@ void print_burst_stats(ThreadConfig *config) {
 }
 
 void print_raw_stats(ThreadConfig **threads, int n_threads, FILE *file) {
-    BurstData **current_data = malloc(sizeof(BurstData *) * n_threads);
     for (int i = 0; i < n_threads; i++) {
-        current_data[i] = threads[i]->burst_data;
-        fprintf(file,"%s-%d-%dcpu,%dio,", threads[i]->algorithm, threads[i]->priority, threads[i]->cpu, threads[i]->io);
-    }
-    fprintf(file, "loop\n");
-    int done;
-    int line = 1;
-    do {
-        done = 1;
-        for (int i = 0; i < n_threads; i++) {
-            if (current_data[i] != NULL) {
-                fprintf(file, "%lf,%lf,", current_data[i]->cpu_burst_length, current_data[i]->io_burst_length);
-                current_data[i] = current_data[i]->next;
-                done = 0;
-            } else {
-                fprintf(file, ",,");
-            }
+        fprintf(file, "%s:cpu", threads[i]->raw);
+        BurstData *data = threads[i]->burst_data;
+        while (data != NULL) {
+            fprintf(file, ",%lf", data->cpu_burst_length);
+            data = data->next;
         }
-        fprintf(file, "%d\n",line++);
-    } while (!done);
-    free(current_data);
+        fprintf(file, "\n");
+        fprintf(file, "%s:io", threads[i]->raw);
+        data = threads[i]->burst_data;
+        while (data != NULL) {
+            fprintf(file, ",%lf", data->io_burst_length);
+            data = data->next;
+        }
+        fprintf(file, "\n");
+    }
 }
 
 int main (int ac, char **av) {
