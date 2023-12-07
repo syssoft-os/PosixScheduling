@@ -104,19 +104,19 @@ void* thread_func(void *arg) {
     time_t start_time = time(NULL);
     while (1) {
         BurstData *data = malloc(sizeof(BurstData));
-        time_t burst_start, burst_end;
-        burst_start = time(NULL);
+        struct timespec burst_start, burst_end;
+        clock_gettime(CLOCK_MONOTONIC, &burst_start);
         if (args->cpu > 0) {
             cpu_burst(args->cpu * calibrate_1ms);
         }
-        burst_end = time(NULL);
-        data->cpu_burst_length = difftime(burst_end, burst_start);
-        burst_start = time(NULL);
+        clock_gettime(CLOCK_MONOTONIC, &burst_end);
+        data->cpu_burst_length = (burst_end.tv_sec - burst_start.tv_sec) + (burst_end.tv_nsec - burst_start.tv_nsec) / 1e9;
+        clock_gettime(CLOCK_MONOTONIC, &burst_start);
         if (args->io > 0) {
             usleep(args->io * 1000); // usleep takes microseconds
         }
-        burst_end = time(NULL);
-        data->io_burst_length = difftime(burst_end, burst_start);
+        clock_gettime(CLOCK_MONOTONIC, &burst_end);
+        data->io_burst_length = (burst_end.tv_sec - burst_start.tv_sec) + (burst_end.tv_nsec - burst_start.tv_nsec) / 1e9;
         printf("%f %f\n", data->cpu_burst_length, data->io_burst_length);
         data->next = args->burst_data;
         args->burst_data = data;
