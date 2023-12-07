@@ -150,10 +150,13 @@ void print_burst_stats(ThreadConfig *config) {
     // Calculate mean and standard deviation
     BurstData *data = config->burst_data;
     double cpu_sum = 0, io_sum = 0;
+    double cpu = config->cpu/1000.0, io = config->io/1000.0;
     int count = 0;
     while (data != NULL) {
-        cpu_sum += data->cpu_burst_length;
-        io_sum += data->io_burst_length;
+        double cpu_delta = cpu - data->cpu_burst_length;
+        cpu_sum += cpu_delta;
+        double io_delta = io - data->io_burst_length;
+        io_sum += io_delta;
         count++;
         data = data->next;
     }
@@ -163,15 +166,19 @@ void print_burst_stats(ThreadConfig *config) {
     double cpu_sq_diff_sum = 0, io_sq_diff_sum = 0;
     data = config->burst_data;
     while (data != NULL) {
-        cpu_sq_diff_sum += pow(data->cpu_burst_length - cpu_mean, 2);
-        io_sq_diff_sum += pow(data->io_burst_length - io_mean, 2);
+        cpu_sq_diff_sum += pow(cpu - data->cpu_burst_length - cpu_mean, 2);
+        io_sq_diff_sum += pow(io - data->io_burst_length - io_mean, 2);
         data = data->next;
     }
     double cpu_std_dev = sqrt(cpu_sq_diff_sum / count);
     double io_std_dev = sqrt(io_sq_diff_sum / count);
 
-    printf("Thread %s: count = %d, CPU mean = %f, CPU std dev = %f, IO mean = %f, IO std dev = %f\n",
-           config->raw, count, cpu_mean, cpu_std_dev, io_mean, io_std_dev);
+    // Scale up to milliseconds
+    cpu_mean *= 1000;
+    cpu_std_dev *= 1000;
+    io_mean *= 1000;
+    io_std_dev *= 1000;
+    printf("%25s | %5d | %13.3f - %13.3f | %13.3f - %13.3f\n",config->raw, count, cpu_mean, cpu_std_dev, io_mean, io_std_dev);
 }
 
 int main (int ac, char **av) {
@@ -206,6 +213,9 @@ int main (int ac, char **av) {
     for (int i = 0; i < n_threads; i++) {
         pthread_join(threads[i]->thread, NULL);
     }
+    printf("Simulation complete\n\n");
+    printf("Results:\n");
+    printf("                   Thread | Count | CPU-diff mean -       std dev |  IO-diff mean -       std dev\n");
     for (int i = 0; i < n_threads; i++) {
         print_burst_stats(threads[i]);
     }
