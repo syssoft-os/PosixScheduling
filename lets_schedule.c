@@ -18,25 +18,21 @@ float cpu_burst(int n) {
 }
 
 int calibrate_cpu_burst() {
-    int low = 0, high = 1e6;
-    double elapsed;
-    clock_t start, end;
-
-    while (high - low > 100) { // Tolerance of 100 iterations
-        int mid = (low + high) / 2;
-        start = clock();
+    int low = 1, high = 1e6; // adjust as necessary
+    while (high - low > 1) {
+        int mid = low + (high - low) / 2;
+        struct timespec start, end;
+        clock_gettime(CLOCK_MONOTONIC, &start);
         cpu_burst(mid);
-        end = clock();
-        elapsed = ((double) (end - start)) / CLOCKS_PER_SEC * 1000; // Convert to milliseconds
-
-        if (elapsed < 1.0) {
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        double elapsed_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+        if (elapsed_time < 0.001) { // less than 1 millisecond
             low = mid;
         } else {
             high = mid;
         }
     }
-
-    return (low + high) / 2;
+    return low;
 }
 
 typedef struct BurstData BurstData;
@@ -117,7 +113,7 @@ void* thread_func(void *arg) {
         }
         clock_gettime(CLOCK_MONOTONIC, &burst_end);
         data->io_burst_length = (burst_end.tv_sec - burst_start.tv_sec) + (burst_end.tv_nsec - burst_start.tv_nsec) / 1e9;
-        printf("%f %f\n", data->cpu_burst_length, data->io_burst_length);
+        // printf("%f %f\n", data->cpu_burst_length, data->io_burst_length);
         data->next = args->burst_data;
         args->burst_data = data;
 
